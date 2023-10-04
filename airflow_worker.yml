@@ -1,0 +1,59 @@
+
+version: '3'
+x-airflow-common:
+  &airflow-common
+  build: .
+  #build: .
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@$POSTGRES_URL_HOST/airflow
+    # For backward compatibility, with Airflow <2.3
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@$POSTGRES_URL_HOST/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@$POSTGRES_URL_HOST/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@$REDIS_URL_HOST/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__CORE__MIN_FILE_PROCESS_INTERVAL: 2
+    AIRFLOW__CORE__DAG_DIR_LIST_INTERVAL: 20
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    DEFAULT_TIMEZONE: 'Asia/Seoul'
+    AIRFLOW__WEBSERVER__DEFAULT_UI_TIMEZONE: 'Asia/Seoul'
+    AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD: 3000
+    AIRFLOW__CELERY_BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT: 216000
+    AIRFLOW__SCHEDULER__ALLOW_TRIGGER_IN_FUTURE: 'true'
+    AIRFLOW__WEBSERVER__SECRET_KEY: $AIRFLOW_SECRET_KEY
+    AIRFLOW__WEBSERVER__SECRET_KEY_SECRET: $AIRFLOW_SECRET_KEY
+    AIRFLOW__LOGGING__REMOTE_LOGGING: 'false'
+    AIRFLOW__WEBSERVER__INSTANCE_NAME: "TG-Cloud-Bigdata"
+    AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: 5
+    AIRFLOW__WEBSERVER__WORKERS: 2
+  volumes:
+    - ./config:/opt/airflow/config
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+  #user: "${AIRFLOW_UID:-0}:0"  
+  user: "${AIRFLOW_UID:-50000}:0"
+
+
+
+services:
+
+  airflow-worker:
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    environment:
+      <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    network_mode: "host"
